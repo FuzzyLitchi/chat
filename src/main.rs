@@ -1,54 +1,69 @@
 #[macro_use] extern crate failure;
 extern crate rusqlite;
 extern crate bcrypt;
+#[macro_use] extern crate text_io;
 
-use rusqlite::{Connection, NO_PARAMS};
-use failure::{Error, err_msg};
-use bcrypt::{DEFAULT_COST, hash, verify};
+mod database;
+
+use std::io::Write;
+use std::io::stdout;
+use failure::Error;
+use rusqlite::Connection;
+
+use database::login;
 
 fn main() -> Result<(), Error> {
-    let conn = Connection::open("database.db").unwrap();
+    let conn = Connection::open("database.db")?;
 
-    login("polly", "hunter2", &conn)?;
+    let user: User;
 
-    Ok(())
-}
+    loop {
+        if let Some(u) = login_cli(&conn) {
+            user = u;
+            break
+        }
+    }
 
-fn create_database(conn: &Connection) -> Result<(), Error> {
-    conn.execute(
-        r#"CREATE TABLE "users" (
-            "id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
-            "username"	TEXT UNIQUE,
-            "hash"	TEXT
-        );"#,
-        NO_PARAMS
-    )?;
+    // Do messaging cli
 
     Ok(())
 }
 
-fn register(username: &str, password: &str, conn: &Connection) -> Result<(), Error> {
-    let hashed_password = hash(password, DEFAULT_COST)?;
-
-    conn.execute(
-        "INSERT INTO users (username, hash) VALUES (?1, ?2)",
-        &[username, &hashed_password]
-    )?;
-
-    Ok(())
+struct User {
+    id: u64,
+    username: String,
 }
 
-fn login(username: &str, password: &str, conn: &Connection) -> Result<bool, Error> {
-    let mut statement = conn.prepare("SELECT hash FROM users WHERE username = ?1")?;
-    let rows = statement.query_map(
-        &[username],
-        |row| row.get::<_, String>(0)
-    )?;
-
-    let hashed_password = rows.filter_map(Result::ok)
-                              .next()
-                              .ok_or(err_msg("No such user"))?;
-
-    Ok(verify(password, &hashed_password)?)
+impl User {
+    fn new(id: u64, username: String) -> Self {
+        Self {
+            id,
+            username
+        }
+    }
 }
 
+fn login_cli(conn: &Connection) -> Option<User> {
+    print!("Username: ");
+    stdout().flush().unwrap();
+    let username: String = read!();
+
+    print!("Password: ");
+    stdout().flush().unwrap();
+    let password: String = read!();
+
+    return match login(&username, &password, conn) {
+        Ok(true) => {
+            println!("Logged into {}!", username);
+            Some(User::new(0, username))
+        },
+        Ok(false) => {
+            println!("Wrong password");
+            None
+        },
+        Err(err) => {
+            println!("Error occured: {}", err);
+            None
+        }
+    }
+}
