@@ -26,17 +26,26 @@ pub fn register(username: &str, password: &str, conn: &Connection) -> Result<(),
     Ok(())
 }
 
-pub fn login(username: &str, password: &str, conn: &Connection) -> Result<bool, Error> {
-    let mut statement = conn.prepare("SELECT hash FROM users WHERE username = ?1")?;
+pub fn login(username: &str, password: &str, conn: &Connection) -> Result<u32, Error> {
+    let mut statement = conn.prepare("SELECT hash, id FROM users WHERE username = ?1")?;
     let rows = statement.query_map(
         &[username],
-        |row| row.get::<_, String>(0)
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u32>(1)?
+            ))
+        }
     )?;
 
-    let hashed_password = rows.filter_map(Result::ok)
+    let (hashed_password, id) = rows.filter_map(Result::ok)
                               .next()
                               .ok_or(err_msg("No such user"))?;
 
-    Ok(verify(password, &hashed_password)?)
+    if verify(password, &hashed_password)? {
+        Ok(id)
+    } else {
+        Err(err_msg("Incorrect password"))
+    }
 }
 
