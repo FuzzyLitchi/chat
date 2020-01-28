@@ -1,6 +1,7 @@
 use rusqlite::{Connection, NO_PARAMS};
 use failure::{Error, err_msg};
 use bcrypt::{DEFAULT_COST, hash, verify};
+use chrono::Utc;
 
 use super::types::{Message, User};
 
@@ -77,8 +78,13 @@ pub fn get_users(conn: &Connection) -> Result<Vec<User>, Error> {
     Ok(rows.flatten().collect())
 }
 
-pub fn send_message(from: u32, to: u32, message: &str, conn: &Connection) {
-    unimplemented!()
+pub fn send_message(from: u32, to: u32, message: &str, conn: &Connection) -> Result<(), Error> {
+    conn.execute(
+        "INSERT INTO messages (sender, recipient, message, datetime) VALUES (?1, ?2, ?3, ?4)",
+        params![from, to, message, Utc::now().timestamp()]
+    )?;
+
+    Ok(())
 }
 
 pub fn get_messages(id: u32, conn: &Connection) -> Result<Vec<Message>, Error> {
