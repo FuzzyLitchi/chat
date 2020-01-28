@@ -1,22 +1,30 @@
-#[macro_use] extern crate failure;
+extern crate failure;
 extern crate rusqlite;
 extern crate bcrypt;
 #[macro_use] extern crate text_io;
+extern crate chrono;
 
 mod database;
+mod types;
 
-use std::io::Write;
-use std::io::stdout;
+use std::io::{stdout, Write};
+use std::collections::HashMap;
 use failure::Error;
 use rusqlite::Connection;
 
-use database::login;
+use database::{login, get_messages, get_users};
+use types::User;
 
 fn main() -> Result<(), Error> {
     let conn = Connection::open("database.db")?;
 
+    let mut users: HashMap<u32, String> = HashMap::new();
+    
+    for user in get_users(&conn)? {
+        users.insert(user.id, user.username);
+    }
+    
     let user: User;
-
     // Login loop
     loop {
         if let Some(u) = login_cli(&conn) {
@@ -36,28 +44,29 @@ Choose one of following actions
 
         let choice: Result<u8, _> = try_read!("{}\n");
         match choice {
-            Ok(1) => println!("1"),
+            Ok(1) => {
+                let messages = get_messages(user.id, &conn)?;
+
+                for message in messages {
+                    let sender = users.get(&message.sender)
+                                      .map(String::as_str)
+                                      .unwrap_or("Unknown");
+                    
+                    println!("From: {}", sender);
+                    println!("Date: {}", message.datetime);
+                    println!("\n{}", message.message);
+                }
+            },
             Ok(2) => println!("2"),
-            Ok(3) => println!("3"),
+            Ok(3) => {
+                println!("Goodbye!");
+                break;
+            },
             _ => println!("Error, please choose one of the listed options by writing a number from 1-3"),
         }
     }
 
     Ok(())
-}
-
-struct User {
-    id: u32,
-    username: String,
-}
-
-impl User {
-    fn new(id: u32, username: String) -> Self {
-        Self {
-            id,
-            username
-        }
-    }
 }
 
 fn login_cli(conn: &Connection) -> Option<User> {

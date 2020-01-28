@@ -2,6 +2,8 @@ use rusqlite::{Connection, NO_PARAMS};
 use failure::{Error, err_msg};
 use bcrypt::{DEFAULT_COST, hash, verify};
 
+use super::types::{Message, User};
+
 pub fn create_database(conn: &Connection) -> Result<(), Error> {
     conn.execute(r#"
         CREATE TABLE "users" (
@@ -9,6 +11,17 @@ pub fn create_database(conn: &Connection) -> Result<(), Error> {
             "username"	TEXT UNIQUE,
             "hash"	TEXT
         );"#,
+        NO_PARAMS
+    )?;
+    conn.execute(r#"
+        CREATE TABLE "messages" (
+            "id"	INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE,
+            "sender"	INTEGER NOT NULL,
+            "recipient"	INTEGER NOT NULL,
+            "message"	TEXT NOT NULL,
+            "datetime"	TIMESTAMP NOT NULL
+        )
+        "#,
         NO_PARAMS
     )?;
 
@@ -49,3 +62,47 @@ pub fn login(username: &str, password: &str, conn: &Connection) -> Result<u32, E
     }
 }
 
+pub fn get_users(conn: &Connection) -> Result<Vec<User>, Error> {
+    let mut statement = conn.prepare("SELECT id, username FROM users")?;
+    let rows = statement.query_map(
+        NO_PARAMS,
+        |row| {
+            Ok(User::new(
+                row.get::<_, u32>(0)?,
+                row.get::<_, String>(1)?,
+            ))
+        }
+    )?;
+
+    Ok(rows.flatten().collect())
+}
+
+pub fn send_message(from: u32, to: u32, message: &str, conn: &Connection) {
+    unimplemented!()
+}
+
+pub fn get_messages(id: u32, conn: &Connection) -> Result<Vec<Message>, Error> {
+    let mut statement = conn.prepare(r#"
+        SELECT id, sender, recipient, message, datetime
+        FROM messages
+        WHERE recipient = ?1"#
+    )?;
+
+    let rows = statement.query_map(
+        &[id],
+        |row| {
+            Ok(Message::new(
+                row.get::<_, u32>(0)?,
+                row.get::<_, u32>(1)?,
+                row.get::<_, u32>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        }
+    )?;
+
+    // Only keep Ok()
+    let messages: Vec<Message> = rows.flatten().collect();
+
+    Ok(messages)
+}
